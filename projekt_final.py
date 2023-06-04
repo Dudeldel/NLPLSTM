@@ -4,67 +4,38 @@ import re
 from nltk.tokenize.treebank import TreebankWordDetokenizer
 import nltk
 import gensim
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import train_test_split, KFold
 import warnings
 warnings.filterwarnings('ignore')
 import tensorflow as tf
 import numpy as np
 import pandas as pd
-def depure_data(data):
-    #Removing URLs with a regular expression
-    url_pattern = re.compile(r'https?://\S+|www\.\S+')
-    data = url_pattern.sub(r'', data)
-
-    # Remove Emails
-    data = re.sub('\S*@\S*\s?', '', data)
-
-    # Remove new line characters
-    data = re.sub('\s+', ' ', data)
-
-    # Remove distracting single quotes
-    data = re.sub("\'", "", data)
-        
-    return data
-def sent_to_words(sentences):
-    for sentence in sentences:
-        yield(gensim.utils.simple_preprocess(str(sentence),     deacc=True))
-
-def detokenize(text):
-    return TreebankWordDetokenizer().detokenize(text)
-
-
-
-train = pd.read_csv('./data/twitter_training.csv', header=None)
+train = pd.read_csv('./twitter_training.csv', header=None)
 train.columns = ['#', 'refers to', 'sentiment', 'text']
 train = train[['text','sentiment']]
 train["text"].isnull().sum()
 train["text"].fillna("No content", inplace = True)
 
+
 def depure_data(data):
-    
-    #Removing URLs with a regular expression
     url_pattern = re.compile(r'https?://\S+|www\.\S+')
     data = url_pattern.sub(r'', data)
 
-    # Remove Emails
     data = re.sub('\S*@\S*\s?', '', data)
 
-    # Remove new line characters
     data = re.sub('\s+', ' ', data)
 
-    # Remove distracting single quotes
     data = re.sub("\'", "", data)
         
     return data
 temp = []
-#Splitting pd.Series to list
 data_to_list = train['text'].values.tolist()
 for i in range(len(data_to_list)):
     temp.append(depure_data(data_to_list[i]))
 list(temp[:5])
 def sent_to_words(sentences):
     for sentence in sentences:
-        yield(gensim.utils.simple_preprocess(str(sentence), deacc=True))  # deacc=True removes punctuations
+        yield(gensim.utils.simple_preprocess(str(sentence), deacc=True)) 
         
 
 data_words = list(sent_to_words(temp))
@@ -102,8 +73,7 @@ sequences = tokenizer.texts_to_sequences(data)
 tweets = pad_sequences(sequences, maxlen=max_len)
 print(tweets)
 
-X_train, X_test, y_train, y_test = train_test_split(tweets,labels, random_state=0)
-print (len(X_train),len(X_test),len(y_train),len(y_test))
+X_fold, X_test, y_fold, y_test = train_test_split(tweets,labels, random_state=42)
 
 model = Sequential()
 model.add(Embedding(max_words, 100))
@@ -113,24 +83,51 @@ model.add(Dense(256, activation='relu'))
 model.add(Dropout(0.5))
 model.add(Dense(4, activation='softmax'))
 
-# Compile the model
-model.compile(loss='categorical_crossentropy', optimizer='adam', metrics=['accuracy'])
-tf.keras.utils.plot_model(model, expand_nested=True, dpi=60, show_shapes=True)
-history = model.fit(X_train, y_train, validation_data=(X_test, y_test), epochs=10, batch_size=32)
+# Define the number of folds and repetitions
+num_folds = 5
+num_repetitions = 2
 
-from matplotlib import pyplot as plt
-plt.plot(history.history['accuracy'])
-plt.plot(history.history['val_accuracy'])
-plt.title('model accuracy')
-plt.ylabel('accuracy')
-plt.xlabel('epoch')
-plt.legend(['train', 'val'], loc='upper left')
-plt.show()
+# Define the cross-validation strategy
+kfold = KFold(n_splits=num_folds, shuffle=True, random_state=42)
 
-plt.plot(history.history['loss'])
-plt.plot(history.history['val_loss'])
-plt.title('model loss')
-plt.ylabel('loss')
-plt.xlabel('epoch')
-plt.legend(['train', 'val'], loc='upper left')
-plt.show()
+# Initialize lists to store the evaluation results
+all_scores = []
+
+i = 1
+# Perform cross-validation
+for _ in range(num_repetitions):
+    for train_index, test_index in kfold.split(X_fold):
+        # Split the X_fold into training and test sets
+        X_train, X_val = X_fold[train_index], X_fold[test_index]
+        y_train, y_val = y_fold[train_index], y_fold[test_index]
+        
+        # Compile and train the model
+        model.compile(loss='categorical_crossentropy', optimizer='adam', metrics=['accuracy',tf.keras.metrics.Precision(),tf.keras.metrics.Recall()])
+        history = model.fit(X_train, y_train, validation_data=(X_val, y_val), epochs=10, batch_size=32)
+        
+        # Evaluate the model on the test set
+        scores = model.evaluate(X_val, y_val, verbose=0)
+        
+        print(str(i)+". fold loss:",scores[0])
+        print(str(i)+". fold accuracy:",scores[1])
+        print(str(i)+". fold precision:",scores[2])
+        print(str(i)+". fold recall:",scores[3])
+
+        # Store the evaluation results
+        all_scores.append(scores)
+        i+=1
+
+# Calculate the average scores across all repetitions and folds
+all_scores = np.array(all_scores)
+average_scores = np.mean(all_scores, axis=0)
+
+# Print the average scores
+print("Average loss:", average_scores[0])
+print("Average accuracy:", average_scores[1])
+
+final_score = model.evaluate(X_test, y_test, verbose=0)
+print("Final loss:",final_score[0])
+print("Final accuracy:",final_score[0])
+print("Final precision:",final_score[0])
+print("Final recall:",final_score[0])
+
