@@ -10,7 +10,7 @@ warnings.filterwarnings('ignore')
 import tensorflow as tf
 import numpy as np
 import pandas as pd
-train = pd.read_csv('./twitter_training.csv', header=None)
+train = pd.read_csv('./drive/MyDrive/jezyk/twitter_training.csv', header=None)
 train.columns = ['#', 'refers to', 'sentiment', 'text']
 train = train[['text','sentiment']]
 train["text"].isnull().sum()
@@ -77,8 +77,8 @@ X_fold, X_test, y_fold, y_test = train_test_split(tweets,labels, random_state=42
 
 model = Sequential()
 model.add(Embedding(max_words, 100))
-model.add(LSTM(128, dropout=0.2, recurrent_dropout=0.2, return_sequences=True))
-model.add(LSTM(64, dropout=0.2, recurrent_dropout=0.2))
+model.add(LSTM(128, dropout=0.2, return_sequences=True, activation="tanh"))
+model.add(LSTM(64, dropout=0.2, activation="tanh"))
 model.add(Dense(256, activation='relu'))
 model.add(Dropout(0.5))
 model.add(Dense(4, activation='softmax'))
@@ -103,7 +103,7 @@ for _ in range(num_repetitions):
         
         # Compile and train the model
         model.compile(loss='categorical_crossentropy', optimizer='adam', metrics=['accuracy',tf.keras.metrics.Precision(),tf.keras.metrics.Recall()])
-        history = model.fit(X_train, y_train, validation_data=(X_val, y_val), epochs=10, batch_size=32)
+        history = model.fit(X_train, y_train, validation_data=(X_val, y_val), epochs=10, batch_size=128)
         
         # Evaluate the model on the test set
         scores = model.evaluate(X_val, y_val, verbose=0)
