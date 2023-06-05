@@ -73,15 +73,9 @@ sequences = tokenizer.texts_to_sequences(data)
 tweets = pad_sequences(sequences, maxlen=max_len)
 print(tweets)
 
-X_fold, X_test, y_fold, y_test = train_test_split(tweets,labels, random_state=42)
+X = tweets
+y = labels
 
-model = Sequential()
-model.add(Embedding(max_words, 100))
-model.add(LSTM(128, dropout=0.2, return_sequences=True, activation="tanh"))
-model.add(LSTM(64, dropout=0.2, activation="tanh"))
-model.add(Dense(256, activation='relu'))
-model.add(Dropout(0.5))
-model.add(Dense(4, activation='softmax'))
 
 # Define the number of folds and repetitions
 num_folds = 5
@@ -96,17 +90,26 @@ all_scores = []
 i = 1
 # Perform cross-validation
 for _ in range(num_repetitions):
-    for train_index, test_index in kfold.split(X_fold):
-        # Split the X_fold into training and test sets
-        X_train, X_val = X_fold[train_index], X_fold[test_index]
-        y_train, y_val = y_fold[train_index], y_fold[test_index]
+    for train_index, test_index in kfold.split(X):
+        # Split the X into training and test sets
+        X_train, X_test = X[train_index], X[test_index]
+        y_train, y_test = y[train_index], y[test_index]
         
+        model = None
+
+        model = Sequential()
+        model.add(Embedding(max_words, 100))
+        model.add(LSTM(128, dropout=0.2, return_sequences=True, activation="tanh"))
+        model.add(LSTM(64, dropout=0.2, activation="tanh"))
+        model.add(Dense(256, activation='relu'))
+        model.add(Dropout(0.5))
+        model.add(Dense(4, activation='softmax'))
         # Compile and train the model
         model.compile(loss='categorical_crossentropy', optimizer='adam', metrics=['accuracy',tf.keras.metrics.Precision(),tf.keras.metrics.Recall()])
-        history = model.fit(X_train, y_train, validation_data=(X_val, y_val), epochs=10, batch_size=128)
+        history = model.fit(X_train, y_train, epochs=10, batch_size=128)
         
         # Evaluate the model on the test set
-        scores = model.evaluate(X_val, y_val, verbose=0)
+        scores = model.evaluate(X_test, y_test, verbose=0)
         
         print(str(i)+". fold loss:",scores[0])
         print(str(i)+". fold accuracy:",scores[1])
@@ -124,10 +127,6 @@ average_scores = np.mean(all_scores, axis=0)
 # Print the average scores
 print("Average loss:", average_scores[0])
 print("Average accuracy:", average_scores[1])
-
-final_score = model.evaluate(X_test, y_test, verbose=0)
-print("Final loss:",final_score[0])
-print("Final accuracy:",final_score[0])
-print("Final precision:",final_score[0])
-print("Final recall:",final_score[0])
+print("Average precision:", average_scores[1])
+print("Average recall:", average_scores[1])
 
